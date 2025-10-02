@@ -137,7 +137,7 @@ async def get_completion(prompt: str, code: str, action: str):
         
         response = await st.session_state.openai_client.get_completion(
             messages=messages,
-            model=st.session_state.get("model", "gpt-4o-mini"),
+            model=st.session_state.get("model", "gpt-3.5-turbo"),
             max_tokens=st.session_state.get("max_tokens", 1000),
             temperature=st.session_state.get("temperature", 0.7),
             stream=st.session_state.get("streaming", True)
@@ -175,7 +175,7 @@ def main():
         # Model settings
         st.session_state.model = st.selectbox(
             "Model",
-            ["gpt-4o-mini", "gpt-4", "gpt-3.5-turbo"],
+            ["gpt-3.5-turbo", "gpt-4"],
             index=0
         )
         
