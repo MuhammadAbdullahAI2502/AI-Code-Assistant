@@ -8,7 +8,11 @@ logger = logging.getLogger(__name__)
 
 class OpenAIClient:
     def __init__(self, api_key: str, max_retries: int = 3, retry_delay: float = 1.0):
-        self.client = openai.AsyncOpenAI(api_key=api_key)
+        try:
+            self.client = openai.AsyncOpenAI(api_key=api_key)
+        except Exception as e:
+            # Fallback for compatibility issues
+            self.client = openai.OpenAI(api_key=api_key)
         self.max_retries = max_retries
         self.retry_delay = retry_delay
     
@@ -61,13 +65,23 @@ class OpenAIClient:
         temperature: float
     ) -> str:
         """Get single completion response."""
-        response = await self.client.chat.completions.create(
-            model=model,
-            messages=messages,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            stream=False
-        )
+        try:
+            response = await self.client.chat.completions.create(
+                model=model,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                stream=False
+            )
+        except:
+            # Fallback for sync client
+            response = self.client.chat.completions.create(
+                model=model,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                stream=False
+            )
         
         return response.choices[0].message.content or ""
     
@@ -79,17 +93,21 @@ class OpenAIClient:
         temperature: float
     ) -> str:
         """Get streaming completion response."""
-        response = await self.client.chat.completions.create(
-            model=model,
-            messages=messages,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            stream=True
-        )
-        
-        content = ""
-        async for chunk in response:
-            if chunk.choices[0].delta.content:
-                content += chunk.choices[0].delta.content
-        
-        return content
+        try:
+            response = await self.client.chat.completions.create(
+                model=model,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                stream=True
+            )
+            
+            content = ""
+            async for chunk in response:
+                if chunk.choices[0].delta.content:
+                    content += chunk.choices[0].delta.content
+            
+            return content
+        except:
+            # Fallback to non-streaming
+            return await self._single_completion(messages, model, max_tokens, temperature)
