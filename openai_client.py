@@ -1,113 +1,39 @@
 import openai
 import asyncio
 import time
-from typing import List, Dict, Optional, AsyncGenerator
-import logging
-
-logger = logging.getLogger(__name__)
+from typing import List, Dict, Optional
 
 class OpenAIClient:
     def __init__(self, api_key: str, max_retries: int = 3, retry_delay: float = 1.0):
-        try:
-            self.client = openai.AsyncOpenAI(api_key=api_key)
-        except Exception as e:
-            # Fallback for compatibility issues
-            self.client = openai.OpenAI(api_key=api_key)
+        openai.api_key = api_key
         self.max_retries = max_retries
         self.retry_delay = retry_delay
     
     async def get_completion(
         self,
         messages: List[Dict[str, str]],
-        model: str = "gpt-4o-mini",
+        model: str = "gpt-3.5-turbo",
         max_tokens: int = 1000,
         temperature: float = 0.7,
-        stream: bool = True
+        stream: bool = False
     ) -> str:
-        """Get completion from OpenAI with retry logic and streaming support."""
+        """Get completion from OpenAI with retry logic."""
         
         for attempt in range(self.max_retries):
             try:
-                if stream:
-                    return await self._stream_completion(
-                        messages, model, max_tokens, temperature
-                    )
-                else:
-                    return await self._single_completion(
-                        messages, model, max_tokens, temperature
-                    )
-            
-            except openai.RateLimitError as e:
-                if attempt < self.max_retries - 1:
-                    wait_time = self.retry_delay * (2 ** attempt)
-                    logger.warning(f"Rate limit hit, waiting {wait_time}s before retry {attempt + 1}")
-                    await asyncio.sleep(wait_time)
-                    continue
-                raise e
-            
-            except openai.APIError as e:
-                if attempt < self.max_retries - 1:
-                    wait_time = self.retry_delay * (2 ** attempt)
-                    logger.warning(f"API error: {e}, retrying in {wait_time}s")
-                    await asyncio.sleep(wait_time)
-                    continue
-                raise e
+                response = await asyncio.to_thread(
+                    openai.ChatCompletion.create,
+                    model=model,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature
+                )
+                return response.choices[0].message.content or ""
             
             except Exception as e:
-                logger.error(f"Unexpected error: {e}")
-                raise e
+                if attempt < self.max_retries - 1:
+                    wait_time = self.retry_delay * (2 ** attempt)
+                    await asyncio.sleep(wait_time)
+                    continue
+                return f"Error: {str(e)}"
     
-    async def _single_completion(
-        self,
-        messages: List[Dict[str, str]],
-        model: str,
-        max_tokens: int,
-        temperature: float
-    ) -> str:
-        """Get single completion response."""
-        try:
-            response = await self.client.chat.completions.create(
-                model=model,
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                stream=False
-            )
-        except:
-            # Fallback for sync client
-            response = self.client.chat.completions.create(
-                model=model,
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                stream=False
-            )
-        
-        return response.choices[0].message.content or ""
-    
-    async def _stream_completion(
-        self,
-        messages: List[Dict[str, str]],
-        model: str,
-        max_tokens: int,
-        temperature: float
-    ) -> str:
-        """Get streaming completion response."""
-        try:
-            response = await self.client.chat.completions.create(
-                model=model,
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                stream=True
-            )
-            
-            content = ""
-            async for chunk in response:
-                if chunk.choices[0].delta.content:
-                    content += chunk.choices[0].delta.content
-            
-            return content
-        except:
-            # Fallback to non-streaming
-            return await self._single_completion(messages, model, max_tokens, temperature)
